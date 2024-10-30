@@ -28,7 +28,6 @@
         #connectionStatus.disconnected {
             background-color: red;
         }
-
         /* Styles Markdown */
         .markdown-content {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
@@ -91,28 +90,24 @@
 
         // Configuration de marked
         marked.setOptions({
-            gfm: true, // GitHub Flavored Markdown
-            breaks: true, // Convertit les retours à la ligne en <br>
-            headerIds: true, // Ajoute des IDs aux titres
-            mangle: false, // Désactive le hachage des IDs des titres
-            sanitize: false, // Désactivé car nous gérons la sécurité nous-mêmes
+            gfm: true,
+            breaks: true,
+            headerIds: true,
+            mangle: false,
+            sanitize: false,
             highlight: function(code, lang) {
-                return code; // Possibilité d'ajouter highlight.js ici plus tard
+                return code;
             }
         });
 
-        // Fonction de sécurité pour le HTML
-        function sanitizeHtml(html) {
-            const tempDiv = document.createElement('div');
-            tempDiv.textContent = html;
-            return tempDiv.innerHTML;
-        }
-
-        // Fonctions
         function loadFromLocalStorage() {
             const savedConversations = localStorage.getItem('conversations');
             if (savedConversations) {
                 conversations = JSON.parse(savedConversations);
+                // Si des conversations existent, définir la dernière comme conversation courante
+                if (conversations.length > 0) {
+                    currentConversationId = conversations[conversations.length - 1].id;
+                }
             } else {
                 conversations = [];
             }
@@ -249,10 +244,15 @@
                     conversations.splice(index, 1);
                     saveToLocalStorage();
                     if (convId === currentConversationId) {
-                        currentConversationId = null;
-                        conversationHistory = [];
-                        document.getElementById('chatHistory').innerHTML = '';
-                        updateCurrentConversationTitle();
+                        if (conversations.length > 0) {
+                            // Charge la dernière conversation si elle existe
+                            loadConversation(conversations[conversations.length - 1].id);
+                        } else {
+                            currentConversationId = null;
+                            conversationHistory = [];
+                            document.getElementById('chatHistory').innerHTML = '';
+                            startNewConversation();
+                        }
                     }
                     renderConversations();
                 }
@@ -281,12 +281,10 @@
             if (role === 'assistant') {
                 const markdownContent = document.createElement('div');
                 markdownContent.className = 'markdown-content';
-                // Conversion du markdown en HTML avec marked
                 const htmlContent = marked.parse(message);
                 markdownContent.innerHTML = htmlContent;
                 messageDiv.appendChild(markdownContent);
             } else {
-                // Pour les messages utilisateur, pas de markdown
                 messageDiv.textContent = message;
             }
             
@@ -383,9 +381,11 @@
             if (connected) {
                 statusIndicator.className = 'connected';
                 statusIndicator.title = 'Connecté';
+                enableInput();
             } else {
                 statusIndicator.className = 'disconnected';
                 statusIndicator.title = 'Déconnecté';
+                disableInput();
             }
         }
 
@@ -415,11 +415,14 @@
                 checkConnection();
             });
 
-            if (!currentConversationId) {
-                startNewConversation();
+            // Nouvelle logique d'initialisation
+            if (conversations.length > 0) {
+                // Charge la dernière conversation si elle existe
+                const lastConversation = conversations[conversations.length - 1];
+                loadConversation(lastConversation.id);
             } else {
-                updateCurrentConversationTitle();
-                enableInput();
+                // Crée une nouvelle conversation uniquement si aucune n'existe
+                startNewConversation();
             }
 
             checkConnection();
