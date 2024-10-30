@@ -6,62 +6,12 @@
     <title>LM Studio API Client</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.2/marked.min.js"></script>
-    <style>
-        .server-config {
-            display: flex;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        #serverUrl {
-            flex-grow: 1;
-            margin-right: 10px;
-        }
-        #connectionStatus {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background-color: grey;
-        }
-        #connectionStatus.connected {
-            background-color: green;
-        }
-        #connectionStatus.disconnected {
-            background-color: red;
-        }
-        /* Styles Markdown */
-        .markdown-content {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-            line-height: 1.6;
-        }
-        
-        .assistant-message pre {
-            background-color: #f6f8fa;
-            padding: 16px;
-            border-radius: 6px;
-            overflow-x: auto;
-            margin: 8px 0;
-        }
-        
-        .assistant-message code {
-            background-color: rgba(175, 184, 193, 0.2);
-            padding: 0.2em 0.4em;
-            border-radius: 6px;
-            font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
-            font-size: 85%;
-        }
-        
-        .assistant-message pre code {
-            background-color: transparent;
-            padding: 0;
-            font-size: 100%;
-        }
-    </style>
 </head>
 <body>
     <div class="sidebar">
         <div class="server-config">
-            <input type="text" id="serverUrl" placeholder="URL du serveur" value="http://10.30.3.188:1234">
-            <div id="connectionStatus" title="État de la connexion"></div>
+            <input type="text" id="serverUrl" value="http://10.30.3.188:1234">
+            <div id="connectionStatus"></div>
         </div>
         <div id="conversations"></div>
     </div>
@@ -69,189 +19,195 @@
     <div class="main-content">
         <div class="conversation-title-bar" id="currentConversationTitle"></div>
         <div class="chat-container" id="chatHistory"></div>
-        
         <div class="input-container">
             <textarea id="chatInput" placeholder="Entrez votre message..." disabled></textarea>
             <div class="controls">
-                <button id="sendButton" class="send-button" disabled>Envoyer</button>
-                <button id="newConversationButton" class="reset-button">Nouvelle conversation</button>
+                <button id="sendButton" disabled>Envoyer</button>
+                <button id="newConversationButton">Nouvelle conversation</button>
             </div>
         </div>
     </div>
 
     <script>
-        // Variables globales
-        let conversationHistory = [];
-        let conversations = [];
-        let currentConversationId = null;
-        let isGenerating = false;
-        let serverUrl = 'http://10.30.3.188:1234';
-        let isConnected = false;
+        const state = {
+            conversations: JSON.parse(localStorage.getItem('conversations') || '[]'),
+            currentId: null,
+            history: [],
+            isGenerating: false,
+            serverUrl: localStorage.getItem('serverUrl') || 'http://10.30.3.188:1234'
+        };
 
-        // Configuration de marked
-        marked.setOptions({
-            gfm: true,
-            breaks: true,
-            headerIds: true,
-            mangle: false,
-            sanitize: false,
-            highlight: function(code, lang) {
-                return code;
-            }
-        });
+        marked.setOptions({ gfm: true, breaks: true });
 
-        function loadFromLocalStorage() {
-            const savedConversations = localStorage.getItem('conversations');
-            if (savedConversations) {
-                conversations = JSON.parse(savedConversations);
-                // Si des conversations existent, définir la dernière comme conversation courante
-                if (conversations.length > 0) {
-                    currentConversationId = conversations[conversations.length - 1].id;
+        const $ = id => document.getElementById(id);
+        const save = () => localStorage.setItem('conversations', JSON.stringify(state.conversations));
+
+        async function sendMessage() {
+            const input = $('chatInput');
+            const message = input.value.trim();
+            if (!message || state.isGenerating) return;
+
+            state.isGenerating = true;
+            input.value = '';
+            input.disabled = true;
+            $('sendButton').disabled = true;
+
+            const userMsg = { role: "user", content: message };
+            state.history.push(userMsg);
+            addMessageToUI(message, 'user');
+
+            try {
+                const response = await fetch(`${state.serverUrl}/v1/chat/completions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        messages: state.history,
+                        model: "local-model",
+                        temperature: 0.7,
+                        stream: true
+                    })
+                });
+
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message assistant-message';
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'markdown-content';
+                messageDiv.appendChild(contentDiv);
+                $('chatHistory').appendChild(messageDiv);
+
+                let content = '';
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                while (true) {
+                    const {done, value} = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n').filter(line => line.trim());
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ') && line.slice(5) !== '[DONE]') {
+                            try {
+                                const delta = JSON.parse(line.slice(5)).choices[0].delta.content;
+                                if (delta) {
+                                    content += delta;
+                                    contentDiv.innerHTML = marked.parse(content);
+                                    $('chatHistory').scrollTop = $('chatHistory').scrollHeight;
+                                }
+                            } catch (e) {}
+                        }
+                    }
                 }
+
+                state.history.push({ role: "assistant", content });
+                updateConversation();
+
+            } catch (error) {
+                addMessageToUI(`Erreur: ${error.message}`, 'assistant');
+                updateStatus(false);
+            }
+
+            state.isGenerating = false;
+            input.disabled = false;
+            $('sendButton').disabled = false;
+        }
+
+        function addMessageToUI(message, role) {
+            const div = document.createElement('div');
+            div.className = `message ${role}-message`;
+            if (role === 'assistant') {
+                const content = document.createElement('div');
+                content.className = 'markdown-content';
+                content.innerHTML = marked.parse(message);
+                div.appendChild(content);
             } else {
-                conversations = [];
+                div.textContent = message;
             }
+            $('chatHistory').appendChild(div);
+            $('chatHistory').scrollTop = $('chatHistory').scrollHeight;
+        }
 
-            const savedServerUrl = localStorage.getItem('serverUrl');
-            if (savedServerUrl) {
-                serverUrl = savedServerUrl;
-                document.getElementById('serverUrl').value = serverUrl;
+        function updateConversation() {
+            const conv = state.conversations.find(c => c.id === state.currentId);
+            if (conv) {
+                conv.messages = state.history;
+                conv.title = conv.title || state.history[0].content.substring(0, 30) + '...';
+                save();
+                renderConversations();
             }
         }
 
-        function saveToLocalStorage() {
-            localStorage.setItem('conversations', JSON.stringify(conversations));
-            localStorage.setItem('serverUrl', serverUrl);
-        }
-
-        function renderConversations() {
-            const conversationsContainer = document.getElementById('conversations');
-            conversationsContainer.innerHTML = '';
-
-            conversations.forEach(conv => {
-                const convDiv = document.createElement('div');
-                convDiv.className = 'conversation-item';
-                if (conv.id === currentConversationId) {
-                    convDiv.classList.add('active');
-                }
-
-                const titleSpan = document.createElement('span');
-                titleSpan.className = 'conversation-title';
-                titleSpan.textContent = conv.title || `Conversation du ${new Date(conv.date).toLocaleString()}`;
-                titleSpan.onclick = () => loadConversation(conv.id);
-
-                const actionsDiv = document.createElement('div');
-                actionsDiv.className = 'conversation-actions';
-
-                const renameButton = document.createElement('button');
-                renameButton.className = 'action-button';
-                renameButton.textContent = 'Rename';
-                renameButton.onclick = (e) => {
-                    e.stopPropagation();
-                    renameConversation(conv.id);
-                };
-
-                const deleteButton = document.createElement('button');
-                deleteButton.className = 'action-button';
-                deleteButton.textContent = 'Delete';
-                deleteButton.onclick = (e) => {
-                    e.stopPropagation();
-                    deleteConversation(conv.id);
-                };
-
-                actionsDiv.appendChild(renameButton);
-                actionsDiv.appendChild(deleteButton);
-
-                convDiv.appendChild(titleSpan);
-                convDiv.appendChild(actionsDiv);
-                conversationsContainer.appendChild(convDiv);
-            });
-        }
-
-        function startNewConversation() {
-            currentConversationId = 'conv_' + Date.now();
-            conversationHistory = [];
-            document.getElementById('chatHistory').innerHTML = '';
-            conversations.push({
-                id: currentConversationId,
+        function newConversation() {
+            state.currentId = 'conv_' + Date.now();
+            state.history = [];
+            $('chatHistory').innerHTML = '';
+            state.conversations.push({
+                id: state.currentId,
                 date: Date.now(),
                 messages: [],
                 title: 'Nouvelle conversation'
             });
-            saveToLocalStorage();
+            save();
             renderConversations();
-            enableInput();
-            updateCurrentConversationTitle();
+            $('chatInput').disabled = false;
+            $('sendButton').disabled = false;
         }
 
-        function loadConversation(convId) {
-            const conversation = conversations.find(c => c.id === convId);
-            if (conversation) {
-                currentConversationId = convId;
-                conversationHistory = conversation.messages;
-                document.getElementById('chatHistory').innerHTML = '';
-                conversation.messages.forEach(msg => {
-                    addMessageToHistory(msg.content, msg.role);
-                });
+        function renderConversations() {
+            const container = $('conversations');
+            container.innerHTML = '';
+            state.conversations.forEach(conv => {
+                const div = document.createElement('div');
+                div.className = `conversation-item${conv.id === state.currentId ? ' active' : ''}`;
+                div.innerHTML = `
+                    <span class="conversation-title">${conv.title || `Conversation du ${new Date(conv.date).toLocaleString()}`}</span>
+                    <div class="conversation-actions">
+                        <button onclick="renameConversation('${conv.id}')" class="action-button">Rename</button>
+                        <button onclick="deleteConversation('${conv.id}')" class="action-button">Delete</button>
+                    </div>
+                `;
+                div.querySelector('.conversation-title').onclick = () => loadConversation(conv.id);
+                container.appendChild(div);
+            });
+        }
+
+        function loadConversation(id) {
+            const conv = state.conversations.find(c => c.id === id);
+            if (conv) {
+                state.currentId = id;
+                state.history = conv.messages;
+                $('chatHistory').innerHTML = '';
+                conv.messages.forEach(msg => addMessageToUI(msg.content, msg.role));
                 renderConversations();
-                enableInput();
-                updateCurrentConversationTitle();
+                $('chatInput').disabled = false;
+                $('sendButton').disabled = false;
             }
         }
 
-        function updateCurrentConversationTitle() {
-            const titleBar = document.getElementById('currentConversationTitle');
-            const currentConversation = conversations.find(c => c.id === currentConversationId);
-            if (currentConversation) {
-                titleBar.textContent = currentConversation.title || `Conversation du ${new Date(currentConversation.date).toLocaleString()}`;
-            } else {
-                titleBar.textContent = 'Nouvelle conversation';
-            }
-        }
-
-        function saveCurrentConversation() {
-            const conversation = conversations.find(c => c.id === currentConversationId);
-            if (conversation) {
-                conversation.messages = conversationHistory;
-                if (!conversation.title && conversationHistory.length > 0) {
-                    conversation.title = conversationHistory[0].content.substring(0, 30) + '...';
-                }
-                saveToLocalStorage();
-                renderConversations();
-                updateCurrentConversationTitle();
-            }
-        }
-
-        function renameConversation(convId) {
-            const conversation = conversations.find(c => c.id === convId);
-            if (conversation) {
-                const newTitle = prompt("Entrez un nouveau titre pour la conversation:", conversation.title);
-                if (newTitle !== null && newTitle.trim() !== "") {
-                    conversation.title = newTitle.trim();
-                    saveToLocalStorage();
+        function renameConversation(id) {
+            const conv = state.conversations.find(c => c.id === id);
+            if (conv) {
+                const title = prompt("Nouveau titre:", conv.title);
+                if (title?.trim()) {
+                    conv.title = title.trim();
+                    save();
                     renderConversations();
-                    if (convId === currentConversationId) {
-                        updateCurrentConversationTitle();
-                    }
                 }
             }
         }
 
-        function deleteConversation(convId) {
-            if (confirm("Êtes-vous sûr de vouloir supprimer cette conversation ?")) {
-                const index = conversations.findIndex(c => c.id === convId);
+        function deleteConversation(id) {
+            if (confirm("Supprimer cette conversation ?")) {
+                const index = state.conversations.findIndex(c => c.id === id);
                 if (index > -1) {
-                    conversations.splice(index, 1);
-                    saveToLocalStorage();
-                    if (convId === currentConversationId) {
-                        if (conversations.length > 0) {
-                            // Charge la dernière conversation si elle existe
-                            loadConversation(conversations[conversations.length - 1].id);
+                    state.conversations.splice(index, 1);
+                    save();
+                    if (id === state.currentId) {
+                        if (state.conversations.length) {
+                            loadConversation(state.conversations[state.conversations.length - 1].id);
                         } else {
-                            currentConversationId = null;
-                            conversationHistory = [];
-                            document.getElementById('chatHistory').innerHTML = '';
-                            startNewConversation();
+                            newConversation();
                         }
                     }
                     renderConversations();
@@ -259,175 +215,49 @@
             }
         }
 
-        function disableInput() {
-            isGenerating = true;
-            document.getElementById('chatInput').disabled = true;
-            document.getElementById('sendButton').disabled = true;
-            document.getElementById('newConversationButton').disabled = true;
-        }
-
-        function enableInput() {
-            isGenerating = false;
-            document.getElementById('chatInput').disabled = false;
-            document.getElementById('sendButton').disabled = false;
-            document.getElementById('newConversationButton').disabled = false;
-        }
-
-        function addMessageToHistory(message, role) {
-            const chatHistory = document.getElementById('chatHistory');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${role}-message`;
-            
-            if (role === 'assistant') {
-                const markdownContent = document.createElement('div');
-                markdownContent.className = 'markdown-content';
-                const htmlContent = marked.parse(message);
-                markdownContent.innerHTML = htmlContent;
-                messageDiv.appendChild(markdownContent);
-            } else {
-                messageDiv.textContent = message;
-            }
-            
-            chatHistory.appendChild(messageDiv);
-            chatHistory.scrollTop = chatHistory.scrollHeight;
-        }
-
-        function showTypingIndicator() {
-            const chatHistory = document.getElementById('chatHistory');
-            const typingDiv = document.createElement('div');
-            typingDiv.className = 'typing-indicator';
-            typingDiv.id = 'typingIndicator';
-            for (let i = 0; i < 3; i++) {
-                const dot = document.createElement('div');
-                dot.className = 'typing-dot';
-                typingDiv.appendChild(dot);
-            }
-            chatHistory.appendChild(typingDiv);
-            chatHistory.scrollTop = chatHistory.scrollHeight;
-        }
-
-        function removeTypingIndicator() {
-            const typingIndicator = document.getElementById('typingIndicator');
-            if (typingIndicator) {
-                typingIndicator.remove();
-            }
-        }
-
-        async function sendChatMessage() {
-            const message = document.getElementById('chatInput').value.trim();
-            if (!message || isGenerating) return;
-
-            addMessageToHistory(message, 'user');
-            disableInput();
-            showTypingIndicator();
-
-            const userMessage = {
-                role: "user",
-                content: message
-            };
-
-            conversationHistory.push(userMessage);
-            saveCurrentConversation();
-
-            const payload = {
-                messages: conversationHistory,
-                model: "local-model",
-                temperature: 0.7
-            };
-
-            try {
-                const response = await fetch(`${serverUrl}/v1/chat/completions`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                });
-                const data = await response.json();
-                removeTypingIndicator();
-                const content = data.choices[0].message.content;
-                
-                const assistantMessage = {
-                    role: "assistant",
-                    content: content
-                };
-                
-                conversationHistory.push(assistantMessage);
-                addMessageToHistory(content, 'assistant');
-                saveCurrentConversation();
-                updateConnectionStatus(true);
-            } catch (error) {
-                removeTypingIndicator();
-                addMessageToHistory(`Erreur: ${error.message}`, 'assistant');
-                updateConnectionStatus(false);
-            }
-
-            document.getElementById('chatInput').value = '';
-            enableInput();
-        }
-
         async function checkConnection() {
             try {
-                const response = await fetch(`${serverUrl}/v1/models`, { method: 'GET' });
-                updateConnectionStatus(response.ok);
+                const response = await fetch(`${state.serverUrl}/v1/models`);
+                updateStatus(response.ok);
             } catch (error) {
-                updateConnectionStatus(false);
+                updateStatus(false);
             }
         }
 
-        function updateConnectionStatus(connected) {
-            const statusIndicator = document.getElementById('connectionStatus');
-            isConnected = connected;
-            if (connected) {
-                statusIndicator.className = 'connected';
-                statusIndicator.title = 'Connecté';
-                enableInput();
-            } else {
-                statusIndicator.className = 'disconnected';
-                statusIndicator.title = 'Déconnecté';
-                disableInput();
-            }
+        function updateStatus(connected) {
+            const status = $('connectionStatus');
+            status.className = connected ? 'connected' : 'disconnected';
+            status.title = connected ? 'Connecté' : 'Déconnecté';
+            $('chatInput').disabled = !connected;
+            $('sendButton').disabled = !connected;
         }
 
         // Initialisation
-        document.addEventListener('DOMContentLoaded', function() {
-            loadFromLocalStorage();
-            renderConversations();
-            
-            const chatInput = document.getElementById('chatInput');
-            const sendButton = document.getElementById('sendButton');
-            const newConversationButton = document.getElementById('newConversationButton');
-            const serverUrlInput = document.getElementById('serverUrl');
-
-            chatInput.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter' && !e.shiftKey && !isGenerating) {
-                    e.preventDefault();
-                    sendChatMessage();
-                }
-            });
-
-            sendButton.addEventListener('click', sendChatMessage);
-            newConversationButton.addEventListener('click', startNewConversation);
-            
-            serverUrlInput.addEventListener('change', function() {
-                serverUrl = this.value;
-                saveToLocalStorage();
+        window.onload = () => {
+            $('serverUrl').value = state.serverUrl;
+            $('sendButton').onclick = sendMessage;
+            $('newConversationButton').onclick = newConversation;
+            $('serverUrl').onchange = e => {
+                state.serverUrl = e.target.value;
+                localStorage.setItem('serverUrl', state.serverUrl);
                 checkConnection();
-            });
+            };
+            $('chatInput').onkeydown = e => {
+                if (e.key === 'Enter' && !e.shiftKey && !state.isGenerating) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            };
 
-            // Nouvelle logique d'initialisation
-            if (conversations.length > 0) {
-                // Charge la dernière conversation si elle existe
-                const lastConversation = conversations[conversations.length - 1];
-                loadConversation(lastConversation.id);
+            if (state.conversations.length) {
+                loadConversation(state.conversations[state.conversations.length - 1].id);
             } else {
-                // Crée une nouvelle conversation uniquement si aucune n'existe
-                startNewConversation();
+                newConversation();
             }
 
             checkConnection();
             setInterval(checkConnection, 5000);
-        });
+        };
     </script>
 </body>
 </html>
