@@ -6,6 +6,12 @@
     <title>LM Studio API Client</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.2/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
     <style>
         .server-config {
             display: flex;
@@ -27,34 +33,6 @@
         }
         #connectionStatus.disconnected {
             background-color: red;
-        }
-
-        /* Styles Markdown */
-        .markdown-content {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-            line-height: 1.6;
-        }
-        
-        .assistant-message pre {
-            background-color: #f6f8fa;
-            padding: 16px;
-            border-radius: 6px;
-            overflow-x: auto;
-            margin: 8px 0;
-        }
-        
-        .assistant-message code {
-            background-color: rgba(175, 184, 193, 0.2);
-            padding: 0.2em 0.4em;
-            border-radius: 6px;
-            font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
-            font-size: 85%;
-        }
-        
-        .assistant-message pre code {
-            background-color: transparent;
-            padding: 0;
-            font-size: 100%;
         }
     </style>
 </head>
@@ -89,15 +67,30 @@
         let serverUrl = 'http://10.30.3.188:1234';
         let isConnected = false;
 
-        // Configuration de marked
+        // Configuration de marked avec highlight.js
         marked.setOptions({
-            gfm: true, // GitHub Flavored Markdown
-            breaks: true, // Convertit les retours à la ligne en <br>
-            headerIds: true, // Ajoute des IDs aux titres
-            mangle: false, // Désactive le hachage des IDs des titres
-            sanitize: false, // Désactivé car nous gérons la sécurité nous-mêmes
+            gfm: true,
+            breaks: true,
+            headerIds: true,
+            mangle: false,
+            sanitize: false,
             highlight: function(code, lang) {
-                return code; // Possibilité d'ajouter highlight.js ici plus tard
+                if (lang && hljs.getLanguage(lang)) {
+                    try {
+                        return hljs.highlight(code, {
+                            language: lang,
+                            ignoreIllegals: true
+                        }).value;
+                    } catch (e) {
+                        console.error('Erreur highlight.js:', e);
+                    }
+                }
+                try {
+                    return hljs.highlightAuto(code).value;
+                } catch (e) {
+                    console.error('Erreur highlight.js auto:', e);
+                    return code;
+                }
             }
         });
 
@@ -108,7 +101,6 @@
             return tempDiv.innerHTML;
         }
 
-        // Fonctions
         function loadFromLocalStorage() {
             const savedConversations = localStorage.getItem('conversations');
             if (savedConversations) {
@@ -281,12 +273,18 @@
             if (role === 'assistant') {
                 const markdownContent = document.createElement('div');
                 markdownContent.className = 'markdown-content';
-                // Conversion du markdown en HTML avec marked
                 const htmlContent = marked.parse(message);
                 markdownContent.innerHTML = htmlContent;
+                
+                // Application de la coloration syntaxique aux blocs de code inline
+                markdownContent.querySelectorAll('code').forEach(block => {
+                    if (block.parentElement.tagName !== 'PRE') {
+                        hljs.highlightElement(block);
+                    }
+                });
+                
                 messageDiv.appendChild(markdownContent);
             } else {
-                // Pour les messages utilisateur, pas de markdown
                 messageDiv.textContent = message;
             }
             
