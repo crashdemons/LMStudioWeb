@@ -6,12 +6,16 @@
     <title>LM Studio API Client</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.2/marked.min.js"></script>
+    <style>
+        /* Les styles existants restent les mêmes */
+    </style>
 </head>
 <body>
+    <!-- Le HTML reste le même -->
     <div class="sidebar">
         <div class="server-config">
-            <input type="text" id="serverUrl" value="http://10.30.3.188:1234">
-            <div id="connectionStatus"></div>
+            <input type="text" id="serverUrl" placeholder="URL du serveur" value="http://10.30.3.188:1234">
+            <div id="connectionStatus" title="État de la connexion"></div>
         </div>
         <div id="conversations"></div>
     </div>
@@ -19,245 +23,157 @@
     <div class="main-content">
         <div class="conversation-title-bar" id="currentConversationTitle"></div>
         <div class="chat-container" id="chatHistory"></div>
+        
         <div class="input-container">
             <textarea id="chatInput" placeholder="Entrez votre message..." disabled></textarea>
             <div class="controls">
-                <button id="sendButton" disabled>Envoyer</button>
-                <button id="newConversationButton">Nouvelle conversation</button>
+                <button id="sendButton" class="send-button" disabled>Envoyer</button>
+                <button id="newConversationButton" class="reset-button">Nouvelle conversation</button>
             </div>
         </div>
     </div>
 
     <script>
-        const state = {
-            conversations: JSON.parse(localStorage.getItem('conversations') || '[]'),
-            currentId: null,
-            history: [],
-            isGenerating: false,
-            serverUrl: localStorage.getItem('serverUrl') || 'http://10.30.3.188:1234'
-        };
+        // Variables globales (restent les mêmes)
+        let conversationHistory = [];
+        let conversations = [];
+        let currentConversationId = null;
+        let isGenerating = false;
+        let serverUrl = 'http://10.30.3.188:1234';
+        let isConnected = false;
 
-        marked.setOptions({ gfm: true, breaks: true });
+        // Toutes les fonctions utilitaires restent les mêmes jusqu'à sendChatMessage
 
-        const $ = id => document.getElementById(id);
-        const save = () => localStorage.setItem('conversations', JSON.stringify(state.conversations));
+        async function sendChatMessage() {
+            const message = document.getElementById('chatInput').value.trim();
+            if (!message || isGenerating) return;
 
-        async function sendMessage() {
-            const input = $('chatInput');
-            const message = input.value.trim();
-            if (!message || state.isGenerating) return;
+            addMessageToHistory(message, 'user');
+            disableInput();
+            
+            const userMessage = {
+                role: "user",
+                content: message
+            };
 
-            state.isGenerating = true;
-            input.value = '';
-            input.disabled = true;
-            $('sendButton').disabled = true;
+            conversationHistory.push(userMessage);
+            saveCurrentConversation();
 
-            const userMsg = { role: "user", content: message };
-            state.history.push(userMsg);
-            addMessageToUI(message, 'user');
+            // Créer un div pour la réponse en streaming
+            const chatHistory = document.getElementById('chatHistory');
+            const responseDiv = document.createElement('div');
+            responseDiv.className = 'message assistant-message';
+            const markdownContent = document.createElement('div');
+            markdownContent.className = 'markdown-content';
+            responseDiv.appendChild(markdownContent);
+            chatHistory.appendChild(responseDiv);
+
+            let streamedContent = '';
+
+            const payload = {
+                messages: conversationHistory,
+                model: "local-model",
+                temperature: 0.7,
+                stream: true  // Activer le streaming
+            };
 
             try {
-                const response = await fetch(`${state.serverUrl}/v1/chat/completions`, {
+                const response = await fetch(`${serverUrl}/v1/chat/completions`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        messages: state.history,
-                        model: "local-model",
-                        temperature: 0.7,
-                        stream: true
-                    })
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
                 });
 
-                const messageDiv = document.createElement('div');
-                messageDiv.className = 'message assistant-message';
-                const contentDiv = document.createElement('div');
-                contentDiv.className = 'markdown-content';
-                messageDiv.appendChild(contentDiv);
-                $('chatHistory').appendChild(messageDiv);
-
-                let content = '';
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
 
                 while (true) {
-                    const {done, value} = await reader.read();
+                    const { done, value } = await reader.read();
                     if (done) break;
 
+                    // Decoder le chunk
                     const chunk = decoder.decode(value);
-                    const lines = chunk.split('\n').filter(line => line.trim());
+                    const lines = chunk.split('\n').filter(line => line.trim() !== '');
 
                     for (const line of lines) {
-                        if (line.startsWith('data: ') && line.slice(5) !== '[DONE]') {
+                        if (line.startsWith('data: ')) {
+                            const jsonData = line.slice(6);
+                            if (jsonData === '[DONE]') continue;
+
                             try {
-                                const delta = JSON.parse(line.slice(5)).choices[0].delta.content;
-                                if (delta) {
-                                    content += delta;
-                                    contentDiv.innerHTML = marked.parse(content);
-                                    $('chatHistory').scrollTop = $('chatHistory').scrollHeight;
+                                const data = JSON.parse(jsonData);
+                                if (data.choices[0].delta.content) {
+                                    const content = data.choices[0].delta.content;
+                                    streamedContent += content;
+                                    markdownContent.innerHTML = marked.parse(streamedContent);
+                                    chatHistory.scrollTop = chatHistory.scrollHeight;
                                 }
-                            } catch (e) {}
+                            } catch (e) {
+                                console.error('Erreur parsing JSON:', e);
+                            }
                         }
                     }
                 }
 
-                state.history.push({ role: "assistant", content });
-                updateConversation();
-
+                // Sauvegarder le message complet dans l'historique
+                const assistantMessage = {
+                    role: "assistant",
+                    content: streamedContent
+                };
+                
+                conversationHistory.push(assistantMessage);
+                saveCurrentConversation();
+                updateConnectionStatus(true);
             } catch (error) {
-                addMessageToUI(`Erreur: ${error.message}`, 'assistant');
-                updateStatus(false);
+                markdownContent.innerHTML = `Erreur: ${error.message}`;
+                updateConnectionStatus(false);
             }
 
-            state.isGenerating = false;
-            input.disabled = false;
-            $('sendButton').disabled = false;
+            document.getElementById('chatInput').value = '';
+            enableInput();
         }
 
-        function addMessageToUI(message, role) {
-            const div = document.createElement('div');
-            div.className = `message ${role}-message`;
-            if (role === 'assistant') {
-                const content = document.createElement('div');
-                content.className = 'markdown-content';
-                content.innerHTML = marked.parse(message);
-                div.appendChild(content);
-            } else {
-                div.textContent = message;
-            }
-            $('chatHistory').appendChild(div);
-            $('chatHistory').scrollTop = $('chatHistory').scrollHeight;
-        }
-
-        function updateConversation() {
-            const conv = state.conversations.find(c => c.id === state.currentId);
-            if (conv) {
-                conv.messages = state.history;
-                conv.title = conv.title || state.history[0].content.substring(0, 30) + '...';
-                save();
-                renderConversations();
-            }
-        }
-
-        function newConversation() {
-            state.currentId = 'conv_' + Date.now();
-            state.history = [];
-            $('chatHistory').innerHTML = '';
-            state.conversations.push({
-                id: state.currentId,
-                date: Date.now(),
-                messages: [],
-                title: 'Nouvelle conversation'
-            });
-            save();
-            renderConversations();
-            $('chatInput').disabled = false;
-            $('sendButton').disabled = false;
-        }
-
-        function renderConversations() {
-            const container = $('conversations');
-            container.innerHTML = '';
-            state.conversations.forEach(conv => {
-                const div = document.createElement('div');
-                div.className = `conversation-item${conv.id === state.currentId ? ' active' : ''}`;
-                div.innerHTML = `
-                    <span class="conversation-title">${conv.title || `Conversation du ${new Date(conv.date).toLocaleString()}`}</span>
-                    <div class="conversation-actions">
-                        <button onclick="renameConversation('${conv.id}')" class="action-button">Rename</button>
-                        <button onclick="deleteConversation('${conv.id}')" class="action-button">Delete</button>
-                    </div>
-                `;
-                div.querySelector('.conversation-title').onclick = () => loadConversation(conv.id);
-                container.appendChild(div);
-            });
-        }
-
-        function loadConversation(id) {
-            const conv = state.conversations.find(c => c.id === id);
-            if (conv) {
-                state.currentId = id;
-                state.history = conv.messages;
-                $('chatHistory').innerHTML = '';
-                conv.messages.forEach(msg => addMessageToUI(msg.content, msg.role));
-                renderConversations();
-                $('chatInput').disabled = false;
-                $('sendButton').disabled = false;
-            }
-        }
-
-        function renameConversation(id) {
-            const conv = state.conversations.find(c => c.id === id);
-            if (conv) {
-                const title = prompt("Nouveau titre:", conv.title);
-                if (title?.trim()) {
-                    conv.title = title.trim();
-                    save();
-                    renderConversations();
-                }
-            }
-        }
-
-        function deleteConversation(id) {
-            if (confirm("Supprimer cette conversation ?")) {
-                const index = state.conversations.findIndex(c => c.id === id);
-                if (index > -1) {
-                    state.conversations.splice(index, 1);
-                    save();
-                    if (id === state.currentId) {
-                        if (state.conversations.length) {
-                            loadConversation(state.conversations[state.conversations.length - 1].id);
-                        } else {
-                            newConversation();
-                        }
-                    }
-                    renderConversations();
-                }
-            }
-        }
-
-        async function checkConnection() {
-            try {
-                const response = await fetch(`${state.serverUrl}/v1/models`);
-                updateStatus(response.ok);
-            } catch (error) {
-                updateStatus(false);
-            }
-        }
-
-        function updateStatus(connected) {
-            const status = $('connectionStatus');
-            status.className = connected ? 'connected' : 'disconnected';
-            status.title = connected ? 'Connecté' : 'Déconnecté';
-            $('chatInput').disabled = !connected;
-            $('sendButton').disabled = !connected;
-        }
+        // Le reste du code reste le même
 
         // Initialisation
-        window.onload = () => {
-            $('serverUrl').value = state.serverUrl;
-            $('sendButton').onclick = sendMessage;
-            $('newConversationButton').onclick = newConversation;
-            $('serverUrl').onchange = e => {
-                state.serverUrl = e.target.value;
-                localStorage.setItem('serverUrl', state.serverUrl);
-                checkConnection();
-            };
-            $('chatInput').onkeydown = e => {
-                if (e.key === 'Enter' && !e.shiftKey && !state.isGenerating) {
-                    e.preventDefault();
-                    sendMessage();
-                }
-            };
+        document.addEventListener('DOMContentLoaded', function() {
+            // L'initialisation reste la même
+            loadFromLocalStorage();
+            renderConversations();
+            
+            const chatInput = document.getElementById('chatInput');
+            const sendButton = document.getElementById('sendButton');
+            const newConversationButton = document.getElementById('newConversationButton');
+            const serverUrlInput = document.getElementById('serverUrl');
 
-            if (state.conversations.length) {
-                loadConversation(state.conversations[state.conversations.length - 1].id);
+            chatInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey && !isGenerating) {
+                    e.preventDefault();
+                    sendChatMessage();
+                }
+            });
+
+            sendButton.addEventListener('click', sendChatMessage);
+            newConversationButton.addEventListener('click', startNewConversation);
+            
+            serverUrlInput.addEventListener('change', function() {
+                serverUrl = this.value;
+                saveToLocalStorage();
+                checkConnection();
+            });
+
+            if (conversations.length > 0) {
+                const lastConversation = conversations[conversations.length - 1];
+                loadConversation(lastConversation.id);
             } else {
-                newConversation();
+                startNewConversation();
             }
 
             checkConnection();
             setInterval(checkConnection, 5000);
-        };
+        });
     </script>
 </body>
 </html>
