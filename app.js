@@ -3,7 +3,7 @@ let conversationHistory = [];
 let conversations = [];
 let currentConversationId = null;
 let isGenerating = false;
-let serverUrl = 'http://10.30.3.188:1234';
+let serverUrl = 'http://192.168.1.10:1234';
 let isConnected = false;
 
 // Configuration de marked
@@ -121,9 +121,9 @@ function updateCurrentConversationTitle() {
     const titleBar = document.getElementById('currentConversationTitle');
     const currentConversation = conversations.find(c => c.id === currentConversationId);
     if (currentConversation) {
-        titleBar.textContent = currentConversation.title || `Conversation du ${new Date(currentConversation.date).toLocaleString()}`;
+        titleBar.textContent = currentConversation.title || `Conversation on ${new Date(currentConversation.date).toLocaleString()}`;
     } else {
-        titleBar.textContent = 'Nouvelle conversation';
+        titleBar.textContent = 'New conversation';
     }
 }
 
@@ -143,7 +143,7 @@ function saveCurrentConversation() {
 function renameConversation(convId) {
     const conversation = conversations.find(c => c.id === convId);
     if (conversation) {
-        const newTitle = prompt("Entrez un nouveau titre pour la conversation:", conversation.title);
+        const newTitle = prompt("Entrez a new title for the conversation:", conversation.title);
         if (newTitle !== null && newTitle.trim() !== "") {
             conversation.title = newTitle.trim();
             saveToLocalStorage();
@@ -298,11 +298,11 @@ function updateConnectionStatus(connected) {
     isConnected = connected;
     if (connected) {
         statusIndicator.className = 'connected';
-        statusIndicator.title = 'Connecté';
+        statusIndicator.title = 'Connected';
         enableInput();
     } else {
         statusIndicator.className = 'disconnected';
-        statusIndicator.title = 'Déconnecté';
+        statusIndicator.title = 'Disconnected';
         disableInput();
     }
 }
