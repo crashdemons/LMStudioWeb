@@ -259,6 +259,7 @@ async function sendChatMessage() {
             headers: {
                 'Content-Type': 'application/json'
             },
+            mode: 'no-cors',
             body: JSON.stringify(payload)
         });
         const data = await response.json();
@@ -286,7 +287,8 @@ async function sendChatMessage() {
 
 async function checkConnection() {
     try {
-        const response = await fetch(`${serverUrl}/v1/models`, { method: 'GET' });
+        const response = await fetch(`${serverUrl}/v1/models`, { method: 'GET',
+            mode: 'no-cors' });
         updateConnectionStatus(response.ok);
     } catch (error) {
         updateConnectionStatus(false);
