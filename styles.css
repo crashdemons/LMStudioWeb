@@ -467,7 +467,7 @@ button:disabled {
         max-width: none;
         margin-right: 0;
         margin-bottom: 20px;
-        max-height: 30vh;
+        max-height: 15vh;
         padding: 5px;
     }
     .input-container{
@@ -491,9 +491,19 @@ button:disabled {
     button {
         width: 100%;
     }
+    button, select, .checkbox-label {
+        padding: 5px 10px;
+    }
+    textarea{
+        padding: 5px;
+    }
 
     .message {
         max-width: 90%;
+        padding: 8px;
+    }
+    .conversation-title-bar{
+        padding: 5px 8px;
     }
 }
 
