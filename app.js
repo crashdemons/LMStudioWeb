@@ -261,11 +261,16 @@ function addMessageToHistory(message, role, id=null) {
     regenerateButton.className='send-button tiny-button'
     deleteButton.className='reset-button tiny-button'
     messageControlsDiv.className='message-controls'
-    deleteButton.onclick=()=>{
+    function removeThisMessage(){
         messageContainerDiv.remove();
         deleteConversationMessage(id);
     }
-    //messageControlsDiv.appendChild(regenerateButton);
+    deleteButton.onclick=removeThisMessage;
+    regenerateButton.onclick=async()=>{
+        removeThisMessage();
+        generateResponseMessage();
+    }
+    messageControlsDiv.appendChild(regenerateButton);
     messageControlsDiv.appendChild(deleteButton);
 
 
@@ -298,6 +303,12 @@ function removeTypingIndicator() {
 }
 
 async function generateResponseMessage(){
+
+    if(conversationHistory.length===0){
+        alert("You cannot generate a response with no message history.\r\nAdding a message and try again.")
+        return;
+    }
+
     disableInput();
     showTypingIndicator();
     const payload = {
