@@ -20,7 +20,13 @@ marked.setOptions({
 
 function uniqid(prefix=""){ return prefix+Math.random().toString(36).substr(2); }
 
-
+function indexOfConversationMessage(id){
+    for(let i=0;i<conversationHistory.length;i++){
+        let msg = conversationHistory[i];
+        if( (msg.id??null) === id ) return i;
+    }
+    return -1;
+}
 function findConversationMessage(id){
 	for(let msg of conversationHistory){
 		if( (msg.id??null) === id ) return msg;
@@ -32,6 +38,15 @@ function alterConversationMessage(id,text){
 	if(msg===null) return;
 	msg.content = text;
     saveCurrentConversation();
+}
+function deleteConversationMessage(id){
+    let idx = indexOfConversationMessage(id);
+    console.log("removing",id,idx,conversationHistory);
+    let msg =conversationHistory.splice(idx,1);
+    console.log("removing2",id,idx,conversationHistory);
+    saveCurrentConversation();
+    console.log("removing3",id,idx,conversationHistory);
+    return msg;
 }
 
 
@@ -216,10 +231,13 @@ function onEditMessageFromHistory(messageDiv,role,id){
 
 function addMessageToHistory(message, role, id=null) {
     const chatHistory = document.getElementById('chatHistory');
+    const messageContainerDiv = document.createElement('div');
+    messageContainerDiv.className = `message ${role}-message`;
     const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${role}-message`;
-	
-	messageDiv.id = id ?? uniqid("msg_");
+    messageDiv.className = `inner-message inner-${role}-message`;
+
+    id=id ?? uniqid("msg_");
+	messageDiv.id = id;
 	
 	messageDiv.contentEditable=true;
 	messageDiv.oninput=function(){ onEditMessageFromHistory(messageDiv,role,id) }
@@ -234,8 +252,27 @@ function addMessageToHistory(message, role, id=null) {
     } else {
         messageDiv.textContent = message;
     }
+
+    const messageControlsDiv = document.createElement('div');
+    const regenerateButton = document.createElement('button');
+    const deleteButton = document.createElement('button');
+    regenerateButton.innerHTML='&#10227;';
+    deleteButton.innerHTML='&#128465;';
+    regenerateButton.className='send-button tiny-button'
+    deleteButton.className='reset-button tiny-button'
+    messageControlsDiv.className='message-controls'
+    deleteButton.onclick=()=>{
+        messageContainerDiv.remove();
+        deleteConversationMessage(id);
+    }
+    //messageControlsDiv.appendChild(regenerateButton);
+    messageControlsDiv.appendChild(deleteButton);
+
+
+    messageContainerDiv.appendChild(messageControlsDiv);
+    messageContainerDiv.appendChild(messageDiv);
     
-    chatHistory.appendChild(messageDiv);
+    chatHistory.appendChild(messageContainerDiv);
     chatHistory.scrollTop = chatHistory.scrollHeight;
 }
 
