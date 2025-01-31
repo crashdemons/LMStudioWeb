@@ -297,13 +297,25 @@ textarea {
     align-items: center;
 }
 
-button,select {
+button,select,.checkbox-label {
     padding: 10px 20px;
     border: none;
     border-radius: 8px;
     cursor: pointer;
     font-weight: bold;
     transition: background-color 0.2s;
+}
+input[type=checkbox]{
+    scale:1.5;
+}
+.checkbox-label{
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.2s;
+    background-color: #ececec;
+    user-select: none;
 }
 
 button:disabled {

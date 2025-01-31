@@ -299,7 +299,7 @@ async function generateResponseMessage(){
     enableInput();
 }
 
-async function sendChatMessageInternal(message,role="user") {
+async function sendChatMessageInternal(message, role="user", generateResponse=true) {
     if (!message || isGenerating) return;
     const userMessage = {
         role: role,
@@ -309,14 +309,15 @@ async function sendChatMessageInternal(message,role="user") {
     addMessageToHistory(message, role, userMessage.id);
     conversationHistory.push(userMessage);
     saveCurrentConversation();
-    await generateResponseMessage();
+    if(generateResponse) await generateResponseMessage();
 }
 
 async function sendChatMessage(){
     const message = document.getElementById('chatInput').value.trim();
     const role = document.getElementById('author')?.value ?? "user";
+    const generateResponse = document.getElementById('generateResponseCheckbox')?.checked ?? true;
     document.getElementById('chatInput').value = '';
-    await sendChatMessageInternal(message,role);
+    await sendChatMessageInternal(message,role,generateResponse);
 }
 
 async function checkConnection() {
