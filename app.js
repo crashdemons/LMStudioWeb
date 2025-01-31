@@ -18,6 +18,9 @@ marked.setOptions({
     }
 });
 
+function uniqid(prefix=""){ return prefix+Math.random().toString(36).substr(2); }
+
+
 function loadFromLocalStorage() {
     const savedConversations = localStorage.getItem('conversations');
     if (savedConversations) {
@@ -109,7 +112,7 @@ function loadConversation(convId) {
         conversationHistory = conversation.messages;
         document.getElementById('chatHistory').innerHTML = '';
         conversation.messages.forEach(msg => {
-            addMessageToHistory(msg.content, msg.role);
+            addMessageToHistory(msg.content, msg.role, msg.id??null);
         });
         renderConversations();
         enableInput();
@@ -191,13 +194,19 @@ function enableInput() {
     document.getElementById('newConversationButton').disabled = false;
 }
 
-function addMessageToHistory(message, role) {
+
+
+
+function addMessageToHistory(message, role, id=null) {
     const chatHistory = document.getElementById('chatHistory');
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}-message`;
+	
+	messageDiv.id = id ?? uniqid("msg_");
     
     if (role === 'assistant') {
         const markdownContent = document.createElement('div');
+
         markdownContent.className = 'markdown-content';
         const htmlContent = marked.parse(message);
         markdownContent.innerHTML = htmlContent;
@@ -235,14 +244,17 @@ async function sendChatMessage() {
     const message = document.getElementById('chatInput').value.trim();
     if (!message || isGenerating) return;
 
-    addMessageToHistory(message, 'user');
+    const userMessage = {
+        role: "user",
+        content: message,
+		id: uniqid("msg_"),
+    };
+
+    addMessageToHistory(message, 'user', userMessage.id);
     disableInput();
     showTypingIndicator();
 
-    const userMessage = {
-        role: "user",
-        content: message
-    };
+
 
     conversationHistory.push(userMessage);
     saveCurrentConversation();
@@ -259,7 +271,7 @@ async function sendChatMessage() {
             headers: {
                 'Content-Type': 'application/json'
             },
-            mode: 'no-cors',
+            //mode: 'no-cors',
             body: JSON.stringify(payload)
         });
         const data = await response.json();
@@ -268,11 +280,12 @@ async function sendChatMessage() {
         
         const assistantMessage = {
             role: "assistant",
-            content: content
+            content: content,
+			id: uniqid("msg_"),
         };
         
         conversationHistory.push(assistantMessage);
-        addMessageToHistory(content, 'assistant');
+        addMessageToHistory(content, 'assistant', assistantMessage.id);
         saveCurrentConversation();
         updateConnectionStatus(true);
     } catch (error) {
@@ -288,7 +301,7 @@ async function sendChatMessage() {
 async function checkConnection() {
     try {
         const response = await fetch(`${serverUrl}/v1/models`, { method: 'GET',
-            mode: 'no-cors' });
+            /*mode: 'no-cors'*/ });
         updateConnectionStatus(response.ok);
     } catch (error) {
         updateConnectionStatus(false);
