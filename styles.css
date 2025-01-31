@@ -297,7 +297,7 @@ textarea {
     align-items: center;
 }
 
-button {
+button,select {
     padding: 10px 20px;
     border: none;
     border-radius: 8px;

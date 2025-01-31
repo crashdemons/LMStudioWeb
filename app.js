@@ -260,31 +260,14 @@ function removeTypingIndicator() {
     }
 }
 
-async function sendChatMessage() {
-    const message = document.getElementById('chatInput').value.trim();
-    if (!message || isGenerating) return;
-
-    const userMessage = {
-        role: "user",
-        content: message,
-		id: uniqid("msg_"),
-    };
-
-    addMessageToHistory(message, 'user', userMessage.id);
+async function generateResponseMessage(){
     disableInput();
     showTypingIndicator();
-
-
-
-    conversationHistory.push(userMessage);
-    saveCurrentConversation();
-
     const payload = {
         messages: conversationHistory,
         model: "local-model",
         temperature: 0.7
     };
-
     try {
         const response = await fetch(`${serverUrl}/v1/chat/completions`, {
             method: 'POST',
@@ -297,13 +280,13 @@ async function sendChatMessage() {
         const data = await response.json();
         removeTypingIndicator();
         const content = data.choices[0].message.content;
-        
+
         const assistantMessage = {
             role: "assistant",
             content: content,
-			id: uniqid("msg_"),
+            id: uniqid("msg_"),
         };
-        
+
         conversationHistory.push(assistantMessage);
         addMessageToHistory(content, 'assistant', assistantMessage.id);
         saveCurrentConversation();
@@ -313,9 +296,27 @@ async function sendChatMessage() {
         addMessageToHistory(`Error: ${error.message}`, 'assistant');
         updateConnectionStatus(false);
     }
-
-    document.getElementById('chatInput').value = '';
     enableInput();
+}
+
+async function sendChatMessageInternal(message,role="user") {
+    if (!message || isGenerating) return;
+    const userMessage = {
+        role: role,
+        content: message,
+		id: uniqid("msg_"),
+    };
+    addMessageToHistory(message, role, userMessage.id);
+    conversationHistory.push(userMessage);
+    saveCurrentConversation();
+    await generateResponseMessage();
+}
+
+async function sendChatMessage(){
+    const message = document.getElementById('chatInput').value.trim();
+    const role = document.getElementById('author')?.value ?? "user";
+    document.getElementById('chatInput').value = '';
+    await sendChatMessageInternal(message,role);
 }
 
 async function checkConnection() {
