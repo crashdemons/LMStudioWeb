@@ -55,7 +55,7 @@ function renderConversations() {
 
         const titleSpan = document.createElement('span');
         titleSpan.className = 'conversation-title';
-        titleSpan.textContent = conv.title || `Conversation du ${new Date(conv.date).toLocaleString()}`;
+        titleSpan.textContent = conv.title || `Conversation on ${new Date(conv.date).toLocaleString()}`;
         titleSpan.onclick = () => loadConversation(conv.id);
 
         const actionsDiv = document.createElement('div');
@@ -94,7 +94,7 @@ function startNewConversation() {
         id: currentConversationId,
         date: Date.now(),
         messages: [],
-        title: 'Nouvelle conversation'
+        title: 'New conversation'
     });
     saveToLocalStorage();
     renderConversations();
@@ -143,7 +143,7 @@ function saveCurrentConversation() {
 function renameConversation(convId) {
     const conversation = conversations.find(c => c.id === convId);
     if (conversation) {
-        const newTitle = prompt("Entrez a new title for the conversation:", conversation.title);
+        const newTitle = prompt("Enter a new title for the conversation:", conversation.title);
         if (newTitle !== null && newTitle.trim() !== "") {
             conversation.title = newTitle.trim();
             saveToLocalStorage();
@@ -156,7 +156,7 @@ function renameConversation(convId) {
 }
 
 function deleteConversation(convId) {
-    if (confirm("Êtes-vous sûr de vouloir supprimer cette conversation ?")) {
+    if (confirm("Do you really want to delete ?")) {
         const index = conversations.findIndex(c => c.id === convId);
         if (index > -1) {
             conversations.splice(index, 1);
@@ -277,7 +277,7 @@ async function sendChatMessage() {
         updateConnectionStatus(true);
     } catch (error) {
         removeTypingIndicator();
-        addMessageToHistory(`Erreur: ${error.message}`, 'assistant');
+        addMessageToHistory(`Error: ${error.message}`, 'assistant');
         updateConnectionStatus(false);
     }
 
