@@ -309,6 +309,10 @@ async function generateResponseMessage(){
         return;
     }
 
+    let lastMessage=conversationHistory[conversationHistory.length-1];
+    lastMessage.content+=" ";//hack to prevent the AI from having a blank reply to itself (stop message)
+
+
     disableInput();
     showTypingIndicator();
     const payload = {
