@@ -123,6 +123,11 @@ body {
     color: white;
     margin-left: auto;
 }
+.system-message {
+    background-color: #d74b28;
+    color: white;
+    margin-left: auto;
+}
 
 .assistant-message {
     background-color: #e4e6eb;
