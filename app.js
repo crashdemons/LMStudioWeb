@@ -21,6 +21,20 @@ marked.setOptions({
 function uniqid(prefix=""){ return prefix+Math.random().toString(36).substr(2); }
 
 
+function findConversationMessage(id){
+	for(let msg of conversationHistory){
+		if( (msg.id??null) === id ) return msg;
+	}
+	return null;
+}
+function alterConversationMessage(id,text){
+	let msg = findConversationMessage(id);
+	if(msg===null) return;
+	msg.content = text;
+    saveCurrentConversation();
+}
+
+
 function loadFromLocalStorage() {
     const savedConversations = localStorage.getItem('conversations');
     if (savedConversations) {
@@ -195,6 +209,9 @@ function enableInput() {
 }
 
 
+function onEditMessageFromHistory(messageDiv,role,id){
+	alterConversationMessage(id,messageDiv.textContent);
+}
 
 
 function addMessageToHistory(message, role, id=null) {
@@ -203,6 +220,9 @@ function addMessageToHistory(message, role, id=null) {
     messageDiv.className = `message ${role}-message`;
 	
 	messageDiv.id = id ?? uniqid("msg_");
+	
+	messageDiv.contentEditable=true;
+	messageDiv.oninput=function(){ onEditMessageFromHistory(messageDiv,role,id) }
     
     if (role === 'assistant') {
         const markdownContent = document.createElement('div');
