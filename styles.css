@@ -331,6 +331,11 @@ input[type=checkbox]{
     transition: background-color 0.2s;
     background-color: #ececec;
     user-select: none;
+    font-size: 0.8em;
+    white-space: nowrap;
+}
+.inner-checkbox-label{
+    margin-left:0.25em;
 }
 
 button:disabled {
