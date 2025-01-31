@@ -329,14 +329,15 @@ async function generateResponseMessage(){
         removeTypingIndicator();
         const content = data.choices[0].message.content;
 
-        const assistantMessage = {
-            role: "assistant",
-            content: content,
-            id: uniqid("msg_"),
-        };
-
-        conversationHistory.push(assistantMessage);
-        addMessageToHistory(content, 'assistant', assistantMessage.id);
+        if(content || (data.choices[0].finish_reason!=="stop")){
+            const assistantMessage = {
+                role: "assistant",
+                content: content,
+                id: uniqid("msg_"),
+            };
+            conversationHistory.push(assistantMessage);
+            addMessageToHistory(content, 'assistant', assistantMessage.id);
+        }
         saveCurrentConversation();
         updateConnectionStatus(true);
     } catch (error) {
