@@ -303,7 +303,7 @@ function removeTypingIndicator() {
 }
 
 async function generateResponseMessage(){
-
+    if(isGenerating) return;
     if(conversationHistory.length===0){
         alert("You cannot generate a response with no message history.\r\nAdding a message and try again.")
         return;
@@ -365,7 +365,11 @@ async function sendChatMessage(){
     const role = document.getElementById('author')?.value ?? "user";
     const generateResponse = document.getElementById('generateResponseCheckbox')?.checked ?? true;
     document.getElementById('chatInput').value = '';
-    await sendChatMessageInternal(message,role,generateResponse);
+    if(!message){
+        generateResponseMessage()
+    }else{
+        await sendChatMessageInternal(message,role,generateResponse);
+    }
 }
 
 async function checkConnection() {
