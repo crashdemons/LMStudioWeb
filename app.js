@@ -1,4 +1,5 @@
 // Variables globales
+
 let conversationHistory = [];
 let conversations = [];
 let currentConversationId = null;
@@ -229,7 +230,7 @@ function onEditMessageFromHistory(messageDiv,role,id){
 }
 
 
-function addMessageToHistory(message, role, id=null) {
+function addMessageToHistory(message, role, id=null,image_data=null) {
     const chatHistory = document.getElementById('chatHistory');
     const messageContainerDiv = document.createElement('div');
     messageContainerDiv.className = `message ${role}-message`;
@@ -276,7 +277,17 @@ function addMessageToHistory(message, role, id=null) {
 
     messageContainerDiv.appendChild(messageControlsDiv);
     messageContainerDiv.appendChild(messageDiv);
-    
+
+
+    if(image_data){
+        console.log("add-msg-img-data",image_data);
+        let datauri = "data:image/png;base64,"+image_data;
+        let img = document.createElement('img');
+        img.src = datauri;
+        img.width=480;
+        messageContainerDiv.appendChild(img);
+    }
+
     chatHistory.appendChild(messageContainerDiv);
     chatHistory.scrollTop = chatHistory.scrollHeight;
 }
@@ -302,7 +313,7 @@ function removeTypingIndicator() {
     }
 }
 
-async function generateResponseMessage(){
+async function generateResponseMessage(generateImage=false){
     if(isGenerating) return;
     if(conversationHistory.length===0){
         alert("You cannot generate a response with no message history.\r\nAdding a message and try again.")
@@ -315,32 +326,62 @@ async function generateResponseMessage(){
 
     disableInput();
     showTypingIndicator();
-    const payload = {
-        messages: conversationHistory,
-        model: "local-model",
-        temperature: 0.7
-    };
     try {
-        const response = await fetch(`${serverUrl}/v1/chat/completions`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            //mode: 'no-cors',
-            body: JSON.stringify(payload)
-        });
-        const data = await response.json();
+        const data = await LMStudioAPI.getReply(conversationHistory,generateImage);
+        console.log("RESP-DATA",data)
         removeTypingIndicator();
-        const content = data.choices[0].message.content;
+        const message = data.choices[0].message;
+        let content = message.content ?? null;
+        let imagedata=null;
 
+        //LLM requested to call a tool.
+        if(message.tool_calls && Array.isArray(message.tool_calls)){
+            let call = message.tool_calls[0];
+            let func = call.function;
+            switch(func.name){
+                case "show_image":
+                    let args = JSON.parse(func.arguments);
+                    console.log("show-image-args",args);
+                    imagedata = await AutomaticAPI.getImage(args.desc,args.tags,args.style);
+                    if(imagedata.images && Array.isArray(imagedata.images)){
+                        imagedata=imagedata.images[0];
+                    }
+            }
+        }
+
+        //the LLM tends to sometimes respond with JSON instead of just calling the tool - so we can extract the JSON.
+        if(!message.tool_calls && (content || (data.choices[0].finish_reason!=="stop"))){
+            content = content ?? "";
+            let rgx = /({.+})/g;
+            let arr = rgx.exec(content);
+            let json = (arr && Array.isArray(arr) && arr.length>1) ? arr[1] : null;
+            if(json){
+                let args=null;
+                try{
+                    args = JSON.parse(json);
+                }catch (ex){
+                    args = JSON.parse(json.replaceAll("\\'","'"));
+                }
+                if(args.parameters) args=args.parameters;
+
+                console.log("show-image-args2",args);
+                imagedata = await AutomaticAPI.getImage(args.desc,args.tags,args.style);
+                if(imagedata.images && Array.isArray(imagedata.images)){
+                    imagedata=imagedata.images[0];
+                }
+            }
+        }
+
+        //process chat content
         if(content || (data.choices[0].finish_reason!=="stop")){
+            content = content ?? "";
             const assistantMessage = {
                 role: "assistant",
                 content: content,
                 id: uniqid("msg_"),
             };
             conversationHistory.push(assistantMessage);
-            addMessageToHistory(content, 'assistant', assistantMessage.id);
+            addMessageToHistory(content, 'assistant', assistantMessage.id, imagedata);
         }
         saveCurrentConversation();
         updateConnectionStatus(true);
@@ -352,7 +393,7 @@ async function generateResponseMessage(){
     enableInput();
 }
 
-async function sendChatMessageInternal(message, role="user", generateResponse=true) {
+async function sendChatMessageInternal(message, role="user", generateResponse=true,generateImage=false) {
     if (!message || isGenerating) return;
     const userMessage = {
         role: role,
@@ -362,18 +403,19 @@ async function sendChatMessageInternal(message, role="user", generateResponse=tr
     addMessageToHistory(message, role, userMessage.id);
     conversationHistory.push(userMessage);
     saveCurrentConversation();
-    if(generateResponse) await generateResponseMessage();
+    if(generateResponse) await generateResponseMessage(generateImage);
 }
 
 async function sendChatMessage(){
     const message = document.getElementById('chatInput').value.trim();
     const role = document.getElementById('author')?.value ?? "user";
     const generateResponse = document.getElementById('generateResponseCheckbox')?.checked ?? true;
+    const generateImage = document.getElementById('generateImageCheckbox')?.checked ?? false;
     document.getElementById('chatInput').value = '';
     if(!message){
-        generateResponseMessage()
+        generateResponseMessage(generateImage)
     }else{
-        await sendChatMessageInternal(message,role,generateResponse);
+        await sendChatMessageInternal(message,role,generateResponse,generateImage);
     }
 }
 
