@@ -3,7 +3,7 @@ let conversationHistory = [];
 let conversations = [];
 let currentConversationId = null;
 let isGenerating = false;
-let serverUrl = 'http://192.168.1.10:1234';
+let serverUrl = 'http://192.168.1.100:1234';
 let isConnected = false;
 
 // Configuration de marked
