@@ -66,6 +66,7 @@ function loadFromLocalStorage() {
     const savedServerUrl = localStorage.getItem('serverUrl');
     if (savedServerUrl) {
         serverUrl = savedServerUrl;
+        LMStudioAPI.URL = serverUrl;
         document.getElementById('serverUrl').value = serverUrl;
     }
 }
@@ -464,6 +465,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     serverUrlInput.addEventListener('change', function() {
         serverUrl = this.value;
+        LMStudioAPI.URL = serverUrl;
         saveToLocalStorage();
         checkConnection();
     });
