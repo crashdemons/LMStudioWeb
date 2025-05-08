@@ -421,9 +421,8 @@ async function sendChatMessage(){
 
 async function checkConnection() {
     try {
-        const response = await fetch(`${serverUrl}/v1/models`, { method: 'GET',
-            /*mode: 'no-cors'*/ });
-        updateConnectionStatus(response.ok);
+        const connected = await LMStudioAPI.checkConnection();
+        updateConnectionStatus(connected);
     } catch (error) {
         updateConnectionStatus(false);
     }
